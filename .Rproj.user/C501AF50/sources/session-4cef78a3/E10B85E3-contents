@@ -1,0 +1,361 @@
+---
+title: "Preparing Plankton Spectra Hawaiian Longline"
+author: "Phoebe Woodworth-Jefcoats & Kieran Murphy"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+# Introduction
+
+The aim of this tutorial is to provide an example workflow for how to incorporate temperature and phytoplankton forcings from Earth System Models into mizer models, using the therMizer package.
+
+This script uses ISIMIP historical observed climate output for a range of phytoplankton and zooplankton products to create the background resource array that will be used by the therMizer model, in this case, the Hawaiian Longline model.
+
+The plankton products we're using have been extracted for specific model domains as vertically integrated values of carbon in mols, in this case using 1 degree resolution across the model domain.
+
+Here, we'll convert plankton carbon densities to total carbon, summed over the model domain. This is similar to, but an improvement upon, [Woodworth-Jefcoats et al. 2019](https://www.frontiersin.org/articles/10.3389/fmars.2019.00383/full).  
+
+Here, this total carbon is used to create resource spectra at each monthly time step from Jan 1961 - Dec 2010.
+
+To construct a plankton spectra, we need to assign size classes for each distinct phytoplankton and zooplankton product.
+
+# FishMIP Data Explorer
+
+https://0rl5bx-julia0blanchard.shinyapps.io/FishMIP_Input_Explorer/
+
+# Extract your own data
+
+Thanks to a great tutorial provided by Denisse Fierro Arcos, you can extract these same forcings for your own regions. All you need is a shapefile and you should be able to follow along.
+
+https://github.com/Fish-MIP/FishMIP_NOAA_workshop
+
+# Plankton data
+
+## Plankton size classes
+
+Size class ranges, for reference (ESD = Equivalent Spherical Diameter):  
+- Phyto = 0.2 - 200 um ESD (mid-point size = 100.1 um ESD)  
+-	pico = 0.2 - 10 um ESD (mid-point size = 5.1 um ESD)  
+-	large (diatoms and diazotrophs) = 10 - 200 um ESD (mid-point size = 105 um ESD)  
+- Zoo = 2 - 20,00 um ESD (based on the literature)(mid-point size = 10001 um ESD)  
+-	zmicro = 2 - 200 um ESD (mid-point size = 101 um ESD)  
+-	zmeso = 200 - 20000 um ESD (mid-point size = 10100 um ESD)  
+
+These size classes were informed by Dunne et al. [2005](https://doi.org/10.1029/2004GB002390), [2012](https://doi.org/10.1029/2010GB003935), and [2013](https://doi.org/10.1175/JCLI-D-12-00150.1), [Liu et al. 2021](https://doi.org/10.1029/2021GL094367), and [Stock et al. 2020](https://doi.org/10.1029/2019MS002043).
+
+## Conversions used:  
+
+- Convert mol C to g C --> $\times 12.001$
+
+- Convert g C to gww --> $\times 10$  
+
+- Convert um ESD to gww --> $\frac{4}{3}\pi(0.5\times0.0001\times size)^3$
+
+## Model domain
+
+Each 1 degree grid cell -->   $9540434011 m2$
+
+Total model domain -->    $1.95e+13 m2$
+
+
+# House keeping
+
+```{r}
+library(tidyverse)
+library(reshape2)
+```
+
+
+# Prepare plankton forcings
+
+## Picoplankton
+
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_pico_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phypico-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_pico_raw)
+# glimpse(df_pico_raw)
+# head(df_pico_raw)
+```
+
+
+```{r}
+df_pico_long <- df_pico_raw %>%
+  select(!c(lat,lon)) %>% # remove lat, lon
+  melt() %>% # melt data from a wide array to long format
+  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+  group_by(variable) %>% # group by month
+  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+  select(date, total_C_g) # select final variables
+  
+
+dim(df_pico_long)
+# head(df_pico_long)
+```
+
+## Diatoms
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_diat_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phydiat-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_diat_raw)
+# glimpse(df_diat_raw)
+# head(df_diat_raw)
+```
+
+
+```{r}
+df_diat_long <- df_diat_raw %>%
+  select(!c(lat,lon,area_m2)) %>% # remove lat, lon, area_m2
+  melt() %>% # melt data from a wide array to long format
+  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+  group_by(variable) %>% # group by month
+  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+  select(date, total_C_g) # select final variables
+
+dim(df_diat_long)
+# head(df_diat_long)
+```
+
+
+## Diazotrophs
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_diaz_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phydiaz-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_diaz_raw)
+# glimpse(df_diaz_raw)
+# head(df_diaz_raw)
+```
+
+```{r}
+df_diaz_long <- df_diaz_raw %>%
+  select(!c(lat,lon)) %>% # remove lat, lon
+  melt() %>% # melt data from a wide array to long format
+  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+  group_by(variable) %>% # group by month
+  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+  select(date, total_C_g) # select final variables
+
+dim(df_diaz_long)
+# head(df_diaz_long)
+```
+
+## Microzooplankton
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_zmicro_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_zmicro-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_zmicro_raw)
+# glimpse(df_zmicro_raw)
+# head(df_zmicro_raw)
+```
+
+```{r}
+df_zmicro_long <- df_zmicro_raw %>%
+  select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
+  melt() %>% # melt data from a wide array to long format
+  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+  group_by(variable) %>% # group by month
+  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+  select(date, total_C_g) # select final variables
+
+dim(df_zmicro_long)
+# head(df_zmicro_long)
+```
+
+## Mesozooplankton
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_zmeso_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_zmeso-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_zmeso_raw)
+# glimpse(df_zmeso_raw)
+# head(df_zmeso_raw)
+```
+
+
+```{r}
+df_zmeso_long <- df_zmeso_raw %>%
+  select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
+  melt() %>% # melt data from a wide array to long format
+  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+  group_by(variable) %>% # group by month
+  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+  select(date, total_C_g) # select final variables
+
+dim(df_zmeso_long)
+# head(df_zmeso_long)
+```
+
+## Check model domain area
+
+```{r}
+Hawaiian_Longline_area <- df_diat_raw %>%
+  select(c(lat,lon,area_m2)) %>%  
+  mutate(total_area = sum(area_m2))
+
+head(Hawaiian_Longline_area)
+```
+
+
+
+## Create size mid points in grams wet weight (gww)
+
+```{r}
+# Create variables for referencing the size class mid points, in gww
+pico_mid <- (4/3)*pi*((0.5*0.0001*5.1)^3)
+large_mid <- (4/3)*pi*((0.5*0.0001*105)^3)
+micro_mid <- (4/3)*pi*((0.5*0.0001*101)^3)
+meso_mid <- (4/3)*pi*((0.5*0.0001*10100)^3)
+```
+
+
+
+```{r}
+# Convert total carbon to gww and then get numerical abundance by dividing by size class mid point
+# This step assumes that all plankton are the midpoint size
+pico_abund <- df_pico_long[,2]*10/pico_mid
+large_abund <- (df_diat_long[,2] + df_diaz_long[,2])*10/large_mid
+micro_abund <- df_zmicro_long[,2]*10/micro_mid
+meso_abund <- df_zmeso_long[,2]*10/meso_mid
+
+# Combine mid-point sizes for generating the x-axis for the linear fit
+plankton_x <- log10(c(pico_mid, micro_mid, large_mid, meso_mid))
+
+# The full spectrum sizes were generated by setting up a mizer params:
+```
+
+```{r}
+library(mizer)
+# params <- newMultispeciesParams(mizer::NS_params@species_params, min_w_pp = 1e-14)
+```
+
+
+```{r}
+# The full spectrum sizes were generated by setting up a mizer params:
+HIparams <- read.csv("HIregion_species_params.csv")
+HIinter <- read.csv("HIregion_inter.csv")[,-1]
+rownames(HIinter) <- colnames(HIinter)
+
+params <- newMultispeciesParams(HIparams, interaction = HIinter, kappa = 1e12, min_w_pp = 1e-14)
+
+# and accessing the full size range
+full_x <- log10(params@w_full)
+
+length(full_x)
+```
+
+
+
+```{r}
+# Creating background resource for full_x, using the actual slope and intercept from the linear models.
+# Create array and fill it
+out_isimip <- array(numeric(), c(600,226)) # 600 time steps by 226 size classes
+isimip_slope <- array(numeric(), c(600,1)) # 600 time steps
+isimip_intercept <- array(numeric(), c(600,1)) # 600 time steps
+
+
+
+# y values
+for (t in seq(1,600,1)) {
+	isimip_plankton <- log10(c(pico_abund$total_C_g[t], micro_abund$total_C_g[t], large_abund$total_C_g[t], meso_abund$total_C_g[t]))
+		
+	# Calculate slope and intercept, expand spectra for full size range
+	# Linear fits
+	isimip_lm <- lm(isimip_plankton ~ plankton_x)
+	
+	# Expand to full size range
+	# out_isimip[t,] <- isimip_lm$coefficients[2] * full_x + isimip_lm$coefficients[1]
+	out_isimip[t,] <- isimip_lm$coefficients[2]*1.03 * full_x + isimip_lm$coefficients[1]*0.85
+	# The scaling for the slope and intercept were determined following the method in 
+	# Woodworth-Jefcoats et al. (2019)  More information is provided below.
+	
+	# Save slope and intercept, for diagnostics
+	isimip_intercept[t,1] <- isimip_lm$coefficients[1]
+	isimip_slope[t,1] <- isimip_lm$coefficients[2]
+	
+}
+```
+
+
+```{r}
+ggplot(,aes(x = full_x, y = out_isimip[1,])) +
+  geom_point() +
+  # geom_line() +
+  # geom_smooth() +
+  scale_y_log10() +
+  xlab("Size (log10 g)") +
+  ylab("Abundance (log10)") +
+  theme_bw()
+```
+
+
+
+```{r}
+months <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months") # create a tidy date variable
+
+ggplot(,aes(x = months, y = isimip_intercept[,1])) +
+  geom_point() +
+  geom_line() +
+  geom_smooth() +
+  xlab("Year") +
+  ylab("log10 Intercept") +
+  theme_bw()
+```
+
+```{r}
+ggplot(,aes(x = months, y = isimip_slope[,1])) +
+  geom_point() +
+  geom_line() +
+  geom_smooth() +
+  xlab("Year") +
+  ylab("Background Resource Slope") +
+  theme_bw()
+```
+
+
+```{r}
+# Save
+write.table(out_isimip, file = "GFDL_resource_spectra_S1.03I0.85.dat", quote = FALSE, row.names = TRUE, col.names = TRUE)
+write.table(isimip_slope, file = "GFDL_resource_slope_S1.03I0.85.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+write.table(isimip_intercept, file = "GFDL_resource_intercept_S1.03I0.85.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+
+```
+
+### Phoebe's notes from each scaling iteration  
+Because of differences across earth system models (ESMs), I've thus far found it necessary to scale the ESM output in order to obtain a realistic mizer model.  To do this, I run therMizer with all the species parameters and no plankton forcing.  I look at the resulting resource generated by the semi-chemostat model as a reference.  I also look at the behavior of the feeding level (FL) across species and sizes.  Then, I scale the slope and intercept iteratively, optimizing the feeding level to match that generated without plankton forcing.  I also compare modeled and observed catch, too (not shown here - see FishingForcing).  This is admittedly tedious...
+
+When multiple ESMs are used in the same simulation round or same study, the same scaling is applied to all ESMs.
+
+Slope and intercept unscaled: FL = 1 all species and sizes  
+Slope $\times$ 1.1 and intercept $\times$ 0.9: FL decreasing slightly with increasing size, still high (0.8 - 1)  
+Slope $\times$ 1.2 and intercept $\times$ 0.8: FL declines strongly with increasing size, 0.4 - 0.8 for small sizes 0 - 0.2 for large sizes.  
+Slope $\times$ 1.1 and intercept $\times$ 0.8: very similar to previous scaling (S1.2I0.2).  
+Slope $\times$ 1.2 and intercept $\times$ 0.9: similar to S1.1I0.9, but decreasing more with size  
+Slope unscaled and intercept $\times$ 0.8: FL low (0.1 sm - 0.5 lg) and increases with body size  
+Slope unscaled and intercept $\times$ 0.9: FL high (0.6 - 0.9 sm to 0.75 - 1 large) and increases with body size  
+Slope unscaled and intercept $\times$ 0.85: FL look good, albeit a bit spread across species, still increasing with increasing body size  
+Slope $\times$ 1.1 and intercept $\times$ 0.85: Closer.  FL good at larger sizes, decreasing with body size  
+Slope $\times$ 1.05 and intercept $\times$ 0.85: Even closer.  FL decreasing less with body size.  
+Slope $\times$ 1.05 and intercept $\times$ 0.9: FL high, but more consistent across body sizes  
+Slope $\times$ 1.025 and intercept $\times$ 0.85: FL good, increasing slightly with body size  
+Slope $\times$ 1.03 and intercept $\times$ 0.85: Going with this option.  FL in the same range as base run and similarly flat across body sizes.  
+
+Finally, an equally valid approach would be to save the resource spectra generated by the semi-chemostat model and to scale those spectra slopes and intercepts using the change in slope and intercept generated from the ESM at each time step (rather than scaling the ESM output).  You'd probably want to do this by comparing each time step to a baseline period, as is done with temperature.

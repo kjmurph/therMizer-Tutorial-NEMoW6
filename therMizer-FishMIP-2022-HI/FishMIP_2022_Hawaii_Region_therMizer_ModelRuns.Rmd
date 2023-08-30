@@ -1,9 +1,13 @@
 ---
-title: "FishMIP 2022 Hawaii Region therMizer ModelRuns"
-author: "Phoebe.Woodworth-Jefcoats@noaa.gov"
-date: '2022-11-08'
-output: html_document
+title: "Simplified FishMIP Hawaii Region therMizer ModelRuns"
+author: "Phoebe Woodworth-Jefcoats & Kieran Murphy"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: rmdformats::readthedown
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
 
 ## Model runs
 

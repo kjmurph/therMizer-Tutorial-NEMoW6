@@ -1,0 +1,476 @@
+---
+title: "Preparing temperature forcing data for FishMIP projections"
+author: "Kieran Murphy"
+date:  "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(reshape2)
+```
+
+
+
+
+Prydz Bay model domain 1,433,028 km2
+
+From km2 to m2 1433028 * 1e6 = 1.433028e+12
+
+Check the area for the model domain that gfdl ISIMIP data has been extracted for Prydz Bay
+
+```{r}
+# Load surface temperature data
+df_gfdl_tos <- read.csv("FishMIP_Temperature_Forcing/gfdl-mom6-cobalt2_obsclim_tos_15arcmin_prydz-bay_monthly_1961_2010.csv") 
+
+df_gfdl_tob <- read.csv("FishMIP_Temperature_Forcing/gfdl-mom6-cobalt2_obsclim_tob_15arcmin_prydz-bay_monthly_1961_2010.csv") 
+
+head(df_gfdl_tos)
+head(df_gfdl_tob)
+
+summary(df_gfdl_tos$lat)
+summary(df_gfdl_tos$lon)
+
+summary(df_gfdl_tob$lat)
+summary(df_gfdl_tob$lon)
+
+```
+
+
+World Ocean Atlas data
+https://www.ncei.noaa.gov/access/world-ocean-atlas-2023/bin/woa23.pl
+
+I am using the 1/4 degree 'Objectively analyzed mean' annual value between 1991-2023
+
+Already filtered the global file to the Prydz Bay region, just load in the smaller file below
+
+```{r}
+# df_wao <- read.csv("FishMIP_Temperature_Forcing/woa23_decav91C0_t00an04.csv")
+# 
+# glimpse(df_wao)
+# head(df_wao)
+# 
+# df_wao_PB <- df_wao %>% 
+#   filter(lat >= -69.62 & lat<=-56.88) %>% 
+#   filter(lon >= 60.12 & lon <= 89.88)
+# 
+# # write.csv(df_wao_PB, "FishMIP_Temperature_Forcing/woa23_decav91C0_t00an04_Prydz_Bay.csv")
+```
+
+
+```{r}
+df_WAO_PB <- read.csv("FishMIP_Temperature_Forcing/woa23_decav91C0_t00an04_Prydz_Bay.csv")[,-1]
+
+head(df_WAO_PB)
+```
+
+
+```{r}
+df_WAO_PB <- df_WAO_PB %>%
+  select(!c(lat,lon))
+```
+
+```{r}
+depth_str <- colnames(df_WAO_PB)
+
+new_str <- str_sub(depth_str,2)
+
+colnames(df_WAO_PB) <- new_str
+
+head(df_WAO_PB)
+
+df_WAO_PB <- df_WAO_PB %>% 
+  filter(!is.na())
+
+WAO <- colMeans(df_WAO_PB, na.rm = T)
+
+WAO <- WAO %>% 
+  melt() 
+  
+colnames(WAO) <- "temperature_degC"
+
+WAO$depth <- as.numeric(new_str)
+
+head(WAO)
+unique(WAO$depth)
+```
+
+
+
+
+```{r}
+WAO_tidy <- WAO %>%
+  dplyr::mutate(realm = case_when(depth == 0 ~ "tos",
+                                  depth > 0 & depth <= 500 ~ "500m",
+                                  depth > 500 & depth <= 1000 ~ "1000m",
+                                  depth > 1000 & depth <= 1500 ~ "1500m",
+                                  depth > 1500 ~ "tob")) %>% 
+  filter(!depth>2000) %>% 
+  group_by(realm) %>% 
+  summarise(temp = mean(temperature_degC)) 
+                                  
+ # Define the desired order
+desired_order <- c("tos", "500m", "1000m", "1500m","tob") 
+
+# Reorder the dataframe
+WAO_final <- WAO_tidy %>%
+  arrange(factor(realm, levels = desired_order))
+        
+
+head(WAO_tidy)
+head(WAO_final)
+```
+
+
+
+```{r}
+GFDL_tos <- df_gfdl_tos %>%
+  select(!c(lat,lon,area_m2)) %>% # remove lat, lon and area_m2
+  melt() %>% # surface temperature of each area for all grid cells
+  group_by(variable) %>% # group by month
+  rename(date = variable) %>%  # rename variable to something meaningful
+  summarise(tos = mean(value)) %>% # mean temperature across all grid cells in model region for each month
+  mutate(date_tidy = parse_date_time(date, orders = "my"))
+
+
+GFDL_tos_annual <- df_gfdl_tos %>%
+  select(!c(lat,lon,area_m2)) %>% # remove lat, lon and area_m2
+  melt() %>% # surface temperature of each area for all grid cells
+  group_by(variable) %>% # group by month
+  rename(date = variable) %>%  # rename variable to something meaningful
+  summarise(tos = mean(value)) %>% # mean temperature across all grid cells in model region for each month
+  mutate(date_tidy = parse_date_time(date, orders = "my")) %>% 
+  group_by(year = lubridate::floor_date(date_tidy, "year")) %>%
+    summarize(tos_ = mean(tos))
+
+glimpse(GFDL_tos_annual)
+head(GFDL_tos_annual)
+```
+
+```{r}
+GFDL_tob <- df_gfdl_tob %>%
+  select(!c(lat,lon,area_m2)) %>% # remove lat, lon and area_m2
+  melt() %>% # surface temperature of each area for all grid cells
+  group_by(variable) %>% # group by month
+  rename(date = variable) %>%  # rename variable to something meaningful
+  summarise(tob = mean(value)) %>%  # mean temperature across all grid cells in model region for each month
+  mutate(date_tidy = parse_date_time(date, orders = "my"))
+
+
+GFDL_tob_annual <- df_gfdl_tob %>%
+  select(!c(lat,lon,area_m2)) %>% # remove lat, lon and area_m2
+  melt() %>% # surface temperature of each area for all grid cells
+  group_by(variable) %>% # group by month
+  rename(date = variable) %>%  # rename variable to something meaningful
+  summarise(tob = mean(value)) %>%  # mean temperature across all grid cells in model region for each month
+  mutate(date_tidy = parse_date_time(date, orders = "my")) %>% 
+  group_by(year = lubridate::floor_date(date_tidy, "year")) %>%
+    summarize(tob_ = mean(tob))
+
+
+
+glimpse(GFDL_tob_annual)
+head(GFDL_tob_annual)
+```
+
+Make a very vague assumption that the Sea Water Potential Temperature at Sea Floor `tob` is a mean depth of 2000m, then let's create values of temperature throughout the water column based on the difference between the surface temperature, `tos` and `tob`
+
+```{r}
+df_temp_water_column <- left_join(GFDL_tos, GFDL_tob) %>% 
+  mutate(t500m = (tob - tos)/4 + tos,
+         t1000m = (tob - tos)/2 + tos,
+         t1500m = ((tob - tos)/4)*3 + tos)
+
+
+df_temp_water_column_annual <- left_join(GFDL_tos_annual, GFDL_tob_annual) %>% 
+  mutate(t500m = (tob_ - tos_)/4 + tos_,
+         t1000m = (tob_ - tos_)/2 + tos_,
+         t1500m = ((tob_ - tos_)/4)*3 + tos_)
+
+glimpse(df_temp_water_column_annual)
+head(df_temp_water_column_annual)
+```
+
+```{r}
+df_temp_water_column %>% 
+  ggplot(aes(x = date_tidy, y = tob), colour = "black") +
+  xlab("Year") +
+  ylab("Temperature (°C)") +
+  # geom_line(aes(x = date_tidy, y = tos), colour = "grey") +
+  geom_smooth(aes(x = date_tidy, y = tos, alpha = 0.001), colour = "grey") +
+  geom_smooth(aes(x = date_tidy, y = t500m, alpha = 0.0001), colour = "red") +
+  geom_smooth(aes(x = date_tidy, y = t1000m, alpha = 0.0001), colour = "orange") +
+  geom_smooth(aes(x = date_tidy, y = t1500m, alpha = 0.0001), colour = "cyan") +
+  geom_line() + 
+  geom_smooth(colour = "black") +
+  theme_classic() +
+  theme(legend.position = "none")     
+```
+
+```{r}
+df_temp_water_column_annual %>% 
+  ggplot(aes(x = year, y = tob_), colour = "black") +
+  xlab("Year") +
+  ylab("Temperature (°C)") +
+  # geom_line(aes(x = year, y = tos), colour = "grey") +
+  geom_line(aes(x = year, y = tos_ ), colour = "grey") +
+  geom_line(aes(x = year, y = t500m ), colour = "red") +
+  geom_line(aes(x = year, y = t1000m ), colour = "orange") +
+  geom_line(aes(x = year, y = t1500m), colour = "cyan") +
+  # geom_smooth(aes(x = year, y = tos_, alpha = 0.001), colour = "grey") +
+  # geom_smooth(aes(x = year, y = t500m, alpha = 0.0001), colour = "red") +
+  # geom_smooth(aes(x = year, y = t1000m, alpha = 0.0001), colour = "orange") +
+  # geom_smooth(aes(x = year, y = t1500m, alpha = 0.0001), colour = "cyan") +
+  geom_line() + 
+  # geom_smooth(colour = "black") +
+  theme_classic() +
+  theme(legend.position = "none")     
+```
+
+
+Save temperature file
+
+```{r}
+# write.csv(GFDL_tos, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_tos_mean.csv")
+# write.csv(GFDL_tob, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_tob_mean.csv")
+# write.csv(df_temp_water_column, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_temp_interpolate_mean.csv")
+# 
+# write.csv(GFDL_tos_annual, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_tos_mean_annual.csv")
+# write.csv(GFDL_tob_annual, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_tob_mean_annual.csv")
+# write.csv(df_temp_water_column_annual, "FishMIP_Temperature_Forcing/GFDL_Prydz_Bay_temp_interpolate_mean_annual.csv")
+```
+
+
+
+
+
+
+```{r}
+#scale down ocean temp and output
+tos <- df_temp_water_column$tos
+names(tos) <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")
+# saveRDS(tos, file = "FishMIP_Temperature_Forcing/tos.rds")
+
+t500m <- df_temp_water_column$t500m
+names(t500m) <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")
+# saveRDS(t500m, file = "FishMIP_Temperature_Forcing/t500m.rds")
+
+t1000m <- df_temp_water_column$t1000m
+names(t1000m) <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")
+# saveRDS(t1000m, file = "FishMIP_Temperature_Forcing/t1000m.rds")
+
+t1500m <- df_temp_water_column$t1500m
+names(t1500m) <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")
+# saveRDS(t1500m, file = "FishMIP_Temperature_Forcing/t1500m.rds")
+
+tob <- df_temp_water_column$tob
+names(tob) <- seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")
+# saveRDS(tob, file = "FishMIP_Temperature_Forcing/tob.rds")
+
+```
+
+
+Annual mean
+```{r}
+# #scale down ocean temp and output
+# tos <- df_temp_water_column_annual$tos_
+# names(tos) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# # saveRDS(tos, file = "FishMIP_Temperature_Forcing/tos_annual.rds")
+tos <-  readRDS("FishMIP_Temperature_Forcing/tos_annual.rds")
+
+# t500m <- df_temp_water_column_annual$t500m
+# names(t500m) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# # saveRDS(t500m, file = "FishMIP_Temperature_Forcing/t500m_annual.rds")
+t500m <-  readRDS("FishMIP_Temperature_Forcing/t500m_annual.rds")
+
+# t1000m <- df_temp_water_column_annual$t1000m
+# names(t1000m) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# # saveRDS(t1000m, file = "FishMIP_Temperature_Forcing/t1000m_annual.rds")
+t1000m <-  readRDS("FishMIP_Temperature_Forcing/t1000m_annual.rds")
+
+# t1500m <- df_temp_water_column_annual$t1500m
+# names(t1500m) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# # saveRDS(t1500m, file = "FishMIP_Temperature_Forcing/t1500m_annual.rds")
+t1500m <-  readRDS("FishMIP_Temperature_Forcing/t1500m_annual.rds")
+
+# tob <- df_temp_water_column_annual$tob_
+# names(tob) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# # saveRDS(tob, file = "FishMIP_Temperature_Forcing/tob_annual.rds")
+tob <-  readRDS("FishMIP_Temperature_Forcing/tob_annual.rds")
+```
+
+
+```{r}
+WAO_final
+```
+Realm    temperature
+tos   	-0.626417125			
+500m     0.004979643			
+1000m	   1.443843817			
+1500m	   1.093618594			
+tob	     0.717597417	
+```{r}
+tos <- as.data.frame(tos)
+
+tos_corrected <- tos %>% 
+  mutate(tos_WAO_corrected = tos - mean(tos) + -0.6264171)
+#scale down ocean temp and output
+
+tos_WAO <- tos_corrected$tos_WAO_corrected
+names(tos_WAO) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# saveRDS(tos_WAO, file = "FishMIP_Temperature_Forcing/WAO_corrected/tos_annual_WAO_corrected.rds")
+```
+
+```{r}
+t500m <- as.data.frame(t500m)
+
+t500m_corrected <- t500m %>% 
+  mutate(t500m_WAO_corrected = t500m - mean(t500m) + 0.004979643)
+#scale down ocean temp and output
+
+t500m_WAO <- t500m_corrected$t500m_WAO_corrected
+names(t500m_WAO) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# saveRDS(t500m_WAO, file = "FishMIP_Temperature_Forcing/WAO_corrected/t500m_annual_WAO_corrected.rds")
+```
+
+```{r}
+t1000m <- as.data.frame(t1000m)
+
+t1000m_corrected <- t1000m %>% 
+  mutate(t1000m_WAO_corrected = t1000m - mean(t1000m) + 1.443843817)
+#scale down ocean temp and output
+
+t1000m_WAO <- t1000m_corrected$t1000m_WAO_corrected
+names(t1000m_WAO) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# saveRDS(t1000m_WAO, file = "FishMIP_Temperature_Forcing/WAO_corrected/t1000m_annual_WAO_corrected.rds")
+```
+
+
+
+```{r}
+t1500m <- as.data.frame(t1500m)
+
+t1500m_corrected <- t1500m %>% 
+  mutate(t1500m_WAO_corrected = t1500m - mean(t1500m) + 1.093618594)
+#scale down ocean temp and output
+
+t1500m_WAO <- t1500m_corrected$t1500m_WAO_corrected
+names(t1500m_WAO) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# saveRDS(t1500m_WAO, file = "FishMIP_Temperature_Forcing/WAO_corrected/t1500m_annual_WAO_corrected.rds")
+```
+
+
+
+```{r}
+tob <- as.data.frame(tob)
+
+tob_corrected <- tob %>% 
+  mutate(tob_WAO_corrected = tob - mean(tob) + 0.717597417)
+#scale down ocean temp and output
+
+tob_WAO <- tob_corrected$tob_WAO_corrected
+names(tob_WAO) <- seq(as.Date("1961-01-01"),as.Date("2010-01-01"),by="year")
+# saveRDS(tob_WAO, file = "FishMIP_Temperature_Forcing/WAO_corrected/tob_annual_WAO_corrected.rds")
+```
+
+
+```{r}
+tos_WAO <- as.data.frame(tos_WAO)
+t500m_WAO <- as.data.frame(t500m_WAO)
+t1000m_WAO <- as.data.frame(t1000m_WAO)
+t1500m_WAO <- as.data.frame(t1500m_WAO)
+tob_WAO <- as.data.frame(tob_WAO)
+
+year <- 1961:2010
+
+tos_WAO$year <- year
+t500m_WAO$year <- year
+t1000m_WAO$year <- year
+t1500m_WAO$year <- year
+tob_WAO$year <- year
+
+
+tob_WAO %>% 
+  ggplot(aes(x = year, y = tob_WAO), colour = "black") +
+  xlab("Year") +
+  ylab("Temperature (°C)") +
+   geom_line() + 
+  # geom_line(aes(x = year, y = tos), colour = "grey") +
+  geom_line(data = tos_WAO, aes(x = year, y = tos_WAO), colour = "grey") +
+  geom_line(data = t500m_WAO, aes(x = year, y = t500m_WAO ), colour = "red") +
+  geom_line(data = t1000m_WAO,aes(x = year, y = t1000m_WAO ), colour = "orange") +
+  geom_line(data = t1500m_WAO,aes(x = year, y = t1500m_WAO), colour = "cyan") +
+  # geom_smooth(aes(x = year, y = tos_, alpha = 0.001), colour = "grey") +
+  # geom_smooth(aes(x = year, y = t500m, alpha = 0.0001), colour = "red") +
+  # geom_smooth(aes(x = year, y = t1000m, alpha = 0.0001), colour = "orange") +
+  # geom_smooth(aes(x = year, y = t1500m, alpha = 0.0001), colour = "cyan") +
+ 
+  # geom_smooth(colour = "black") +
+  theme_classic() +
+  theme(legend.position = "none")     
+```
+
+
+Load netcdf temperature of BRAN reanalysis (help used: https://rpubs.com/boyerag/297592)
+
+```{r}
+library(ncdf4) # package for netcdf manipulation
+library(raster) # package for raster manipulation
+library(rgdal) # package for geospatial analysis
+# library(ggplot2) # package for plotting
+```
+
+
+```{r}
+nc_data <- nc_open('FishMIP_Temperature_Forcing/ocean_temp_ann_2010.nc')
+# # Save the print(nc) dump to a text file
+# {
+#     sink('gimms3g_ndvi_1982-2012_metadata.txt')
+#  print(nc_data)
+#     sink()
+# }
+
+glimpse(nc_data)
+nc_data$dim
+```
+
+
+```{r}
+ndvi.array <- ncvar_get(nc_data, "NDVI") # store the data in a 3-dimensional array
+dim(ndvi.array) 
+```
+
+
+
+```{r}
+lon <- ncvar_get(nc_data, "lon")
+lat <- ncvar_get(nc_data, "lat", verbose = F)
+t <- ncvar_get(nc_data, "time")
+
+head(lon) # look at the first few entries in the longitude vector
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
