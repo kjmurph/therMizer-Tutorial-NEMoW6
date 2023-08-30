@@ -1,9 +1,13 @@
 ---
-title: "FishMIP 2022 Hawaii Region therMizer ModelRuns"
-author: "Phoebe.Woodworth-Jefcoats@noaa.gov"
-date: '2022-11-08'
-output: html_document
+title: "Simplified FishMIP Hawaii Region therMizer ModelRuns"
+author: "Phoebe Woodworth-Jefcoats & Kieran Murphy"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: rmdformats::readthedown
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
 
 ## Model runs
 
@@ -43,7 +47,7 @@ Set up the resource:
 ```{r}
 # Load resource spectra 
 # Note: You may need to update this path
-isimip_plankton <- read.table("ClimateForcing/GFDL_resource_spectra_S1.03I0.85.dat")
+isimip_plankton <- read.table("GFDL_resource_spectra_S1.03I0.85.dat")
 isimip_plankton <- as(isimip_plankton, "matrix")
 sizes <- names(params@initial_n_pp)
 n_pp_array <- array(NA, dim = c(length(time_steps), length(sizes)), dimnames = list(time = time_steps, w = sizes))
@@ -56,11 +60,34 @@ for (t in seq(1,length(time_steps) - 1,1)) {
 }
 ```
 
+
+
+## Dummy temperature example
+
+If you were using the temperature forcing we prepared in `Preparing_Forcings_Hawaiian_Longline.Rmd`
+
+```{r}
+# tos <- readRDS("Temperature_Forcings/tos.rds")
+# t500m <- readRDS("Temperature_Forcings/t500m.rds")
+# t1000m <- readRDS("Temperature_Forcings/t1000m.rds")
+# t1500m <- readRDS("Temperature_Forcings/t1500m.rds")
+# tob <- readRDS("Temperature_Forcings/tob.rds")
+# 
+# ocean_temp <- abind::abind(tos,t500m,t1000m, t1500m, tob, along = 2)
+# 
+# realm_names <- c("tos","t500m","t1000m", "t1500m", "tob")
+# 
+# colnames(ocean_temp) <- realm_names
+# rownames(ocean_temp) <- time_steps
+```
+
+
+
 Set up temperature-related information:
 ```{r}
 # Load ocean temp array
 # Note: You may need to update this path
-ocean_temp <- read.table("ClimateForcing/GFDL_ocean_temp_realm_array.dat")
+ocean_temp <- read.table("therMizer-FishMIP-2022-HI/GFDL_ocean_temp_realm_array.dat")
 ocean_temp <- as(ocean_temp, "matrix")
 r <- colnames(ocean_temp)
 ocean_temp_array <- array(NA, dim = c(length(time_steps), length(r)), dimnames = list(time = time_steps, realm_names = r))
@@ -102,7 +129,7 @@ Load effort:
 ```{r}
 # Load effort
 # Note: You may need to update this path
-isimip_effort <- read.csv("FishingForcing/HI_Monthly_Fishing_Mortality.csv")
+isimip_effort <- read.csv("therMizer-FishMIP-2022-HI/HI_Monthly_Fishing_Mortality.csv")
 isimip_effort <- as(isimip_effort, "matrix")
 gear_name = c("Longline")
 effort_array <- array(NA, c(length(time_steps), length(gear_name)), dimnames = list(time = time_steps, gear = gear_name))
@@ -121,7 +148,7 @@ params <- upgradeTherParams(params, ocean_temp_array = ocean_temp_array,
                             aerobic_effect = TRUE, metabolism_effect = TRUE)
 
 # Nice test to see that things are working correctly
-plotThermPerformance(params)
+plotTherPerformance(params)
 ```
 
 Project to steady-state, with and without fishing:
