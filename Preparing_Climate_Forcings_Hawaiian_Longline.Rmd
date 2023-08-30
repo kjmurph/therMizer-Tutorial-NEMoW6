@@ -333,9 +333,9 @@ ggplot(,aes(x = months, y = isimip_slope[,1])) +
 
 ```{r}
 # Save
-write.table(out_isimip, file = "GFDL_resource_spectra_S1.03I0.85.dat", quote = FALSE, row.names = TRUE, col.names = TRUE)
-write.table(isimip_slope, file = "GFDL_resource_slope_S1.03I0.85.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
-write.table(isimip_intercept, file = "GFDL_resource_intercept_S1.03I0.85.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+write.table(out_isimip, file = "GFDL_resource_spectra_60arcmin.dat", quote = FALSE, row.names = TRUE, col.names = TRUE)
+write.table(isimip_slope, file = "GFDL_resource_slope_60arcmin.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+write.table(isimip_intercept, file = "GFDL_resource_intercept_60arcmin.dat", quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
 
 ```
 
