@@ -47,7 +47,7 @@ Set up the resource:
 ```{r}
 # Load resource spectra 
 # Note: You may need to update this path
-isimip_plankton <- read.table("GFDL_resource_spectra_S1.03I0.85.dat")
+isimip_plankton <- read.table("GFDL_resource_spectra_60arcmin.dat")
 isimip_plankton <- as(isimip_plankton, "matrix")
 sizes <- names(params@initial_n_pp)
 n_pp_array <- array(NA, dim = c(length(time_steps), length(sizes)), dimnames = list(time = time_steps, w = sizes))
