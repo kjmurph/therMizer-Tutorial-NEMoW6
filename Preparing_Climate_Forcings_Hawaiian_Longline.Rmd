@@ -9,6 +9,13 @@ output: rmdformats::readthedown
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
+# House keeping
+
+```{r}
+library(tidyverse)
+library(reshape2)
+```
+
 
 # Introduction
 
@@ -42,9 +49,9 @@ Size class ranges, for reference (ESD = Equivalent Spherical Diameter):
 - Phyto = 0.2 - 200 um ESD (mid-point size = 100.1 um ESD)  
 -	pico = 0.2 - 10 um ESD (mid-point size = 5.1 um ESD)  
 -	large (diatoms and diazotrophs) = 10 - 200 um ESD (mid-point size = 105 um ESD)  
-- Zoo = 2 - 20,00 um ESD (based on the literature)(mid-point size = 10001 um ESD)  
+- Zoo = 2 - 20,000 um ESD (based on the literature)(mid-point size = 10001 um ESD)  
 -	zmicro = 2 - 200 um ESD (mid-point size = 101 um ESD)  
--	zmeso = 200 - 20000 um ESD (mid-point size = 10100 um ESD)  
+-	zmeso = 200 - 20,000 um ESD (mid-point size = 10100 um ESD)  
 
 These size classes were informed by Dunne et al. [2005](https://doi.org/10.1029/2004GB002390), [2012](https://doi.org/10.1029/2010GB003935), and [2013](https://doi.org/10.1175/JCLI-D-12-00150.1), [Liu et al. 2021](https://doi.org/10.1029/2021GL094367), and [Stock et al. 2020](https://doi.org/10.1029/2019MS002043).
 
@@ -58,48 +65,38 @@ These size classes were informed by Dunne et al. [2005](https://doi.org/10.1029/
 
 ## Model domain
 
+### Check model domain area
+
+Need a file that has the area_m2 info.
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_diat_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phydiat-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+```
+
+
+```{r}
+df_area <- df_diat_raw %>% 
+  select(area_m2)
+  
+Hawaiian_Longline_area <- df_diat_raw %>%
+  select(c(lat,lon,area_m2)) %>%  
+  mutate(total_area = sum(area_m2))
+
+head(Hawaiian_Longline_area)
+dim(Hawaiian_Longline_area)
+
+dim(df_area)
+summary(df_area)
+```
+
 Each 1 degree grid cell -->   $9540434011 m2$
 
 Total model domain -->    $1.95e+13 m2$
 
 
-# House keeping
-
-```{r}
-library(tidyverse)
-library(reshape2)
-```
-
-
 # Prepare plankton forcings
 
-## Picoplankton
-
-```{r}
-# Load total carbon data for picoplankton and reformat dataframe
-df_pico_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phypico-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
-
-dim(df_pico_raw)
-# glimpse(df_pico_raw)
-# head(df_pico_raw)
-```
-
-
-```{r}
-df_pico_long <- df_pico_raw %>%
-  select(!c(lat,lon)) %>% # remove lat, lon
-  melt() %>% # melt data from a wide array to long format
-  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
-  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
-  group_by(variable) %>% # group by month
-  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
-  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
-  select(date, total_C_g) # select final variables
-  
-
-dim(df_pico_long)
-# head(df_pico_long)
-```
+Need to do diatoms first to extract area vector
 
 ## Diatoms
 ```{r}
@@ -114,19 +111,77 @@ dim(df_diat_raw)
 
 ```{r}
 df_diat_long <- df_diat_raw %>%
-  select(!c(lat,lon,area_m2)) %>% # remove lat, lon, area_m2
-  melt() %>% # melt data from a wide array to long format
-  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
-  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
-  group_by(variable) %>% # group by month
-  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
-  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
-  select(date, total_C_g) # select final variables
+  gather(Date, mol_C_m2,Jan_1961:Dec_2010) %>% # Convert from wide format to long
+  mutate(C_g_m2 = mol_C_m2 * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = mol_C_m2*area_m2) %>% # g C per grid cell by multiplying by area in m^2 per grid cell
+  mutate(C_gww = C_g * 10) %>% # *10 to get grams wet weight
+  mutate(date = parse_date_time(Date, orders = "my"))
 
+df_area <- df_diat_long$area_m2
+df_date <- df_diat_long$date
+
+df_diat_long <- df_diat_long %>% # Create a tidy date variable
+  group_by(date) %>% # group by month
+  summarise(total_C_gww = sum(C_gww)) # sum carbon so it is total carbon for whole model domain per month
+
+head(df_diat_long)
 dim(df_diat_long)
-# head(df_diat_long)
 ```
 
+## Picoplankton
+
+```{r}
+# Load total carbon data for picoplankton and reformat dataframe
+df_pico_raw <- read.csv("Plankton_Forcings/gfdl-mom6-cobalt2_obsclim_phypico-vint_60arcmin_Hawaiian-Longline_monthly_1961_2010.csv")
+
+dim(df_pico_raw)
+# glimpse(df_pico_raw)
+# head(df_pico_raw)
+```
+
+
+```{r}
+# df_pico_long <- df_pico_raw %>%
+#   select(!c(lat,lon)) %>% # remove lat, lon
+#   melt() %>% # melt data from a wide array to long format
+#   mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+#   mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+#   group_by(variable) %>% # group by month
+#   summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+#   mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+#   select(date, total_C_g) # select final variables
+  
+
+df_pico_long <- df_pico_raw %>%
+  gather(Date, mol_C_m2, X1961.01.01.00.00.00:X2010.12.01.00.00.00) %>% # Convert from wide format to long
+  mutate(area_m2 = df_area) %>% 
+  mutate(date = df_date) %>% 
+  mutate(C_g_m2 = mol_C_m2 * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = mol_C_m2*area_m2) %>% # g C per grid cell by multiplying by area in m^2 per grid cell
+  mutate(C_gww = C_g * 10) %>% # *10 to get grams wet weight
+  # mutate(date = parse_date_time(Date, orders = "my")) %>% # Create a tidy date variable
+  group_by(date) %>% # group by month
+  summarise(total_C_gww = sum(C_gww)) # sum carbon so it is total carbon for whole model domain per month
+```
+
+
+*Important*
+Need to update so the area is used grid cell by grid cell
+
+```{r}
+# df_diat_long <- df_diat_raw %>%
+#   select(!c(lat,lon,area_m2)) %>% # remove lat, lon, area_m2
+#   melt() %>% # melt data from a wide array to long format
+#   mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+#   mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+#   group_by(variable) %>% # group by month
+#   summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+#   mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+#   select(date, total_C_g) # select final variables
+# 
+# dim(df_diat_long)
+# head(df_diat_long)
+```
 
 ## Diazotrophs
 ```{r}
@@ -139,18 +194,26 @@ dim(df_diaz_raw)
 ```
 
 ```{r}
-df_diaz_long <- df_diaz_raw %>%
-  select(!c(lat,lon)) %>% # remove lat, lon
-  melt() %>% # melt data from a wide array to long format
-  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
-  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
-  group_by(variable) %>% # group by month
-  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
-  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
-  select(date, total_C_g) # select final variables
+# df_diaz_long <- df_diaz_raw %>%
+#   select(!c(lat,lon)) %>% # remove lat, lon
+#   melt() %>% # melt data from a wide array to long format
+#   mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+#   mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+#   group_by(variable) %>% # group by month
+#   summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+#   mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+#   select(date, total_C_g) # select final variables
 
-dim(df_diaz_long)
-# head(df_diaz_long)
+df_diaz_long <- df_diaz_raw %>%
+  gather(Date, mol_C_m2, X1961.01.01.00.00.00:X2010.12.01.00.00.00) %>% # Convert from wide format to long
+  mutate(area_m2 = df_area) %>% 
+  mutate(date = df_date) %>% 
+  mutate(C_g_m2 = mol_C_m2 * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = mol_C_m2*area_m2) %>% # g C per grid cell by multiplying by area in m^2 per grid cell
+  mutate(C_gww = C_g * 10) %>% # *10 to get grams wet weight
+  # mutate(date = parse_date_time(Date, orders = "my")) %>% # Create a tidy date variable
+  group_by(date) %>% # group by month
+  summarise(total_C_gww = sum(C_gww)) # sum carbon so it is total carbon for whole model domain per month
 ```
 
 ## Microzooplankton
@@ -164,18 +227,24 @@ dim(df_zmicro_raw)
 ```
 
 ```{r}
-df_zmicro_long <- df_zmicro_raw %>%
-  select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
-  melt() %>% # melt data from a wide array to long format
-  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
-  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
-  group_by(variable) %>% # group by month
-  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
-  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
-  select(date, total_C_g) # select final variables
+# df_zmicro_long <- df_zmicro_raw %>%
+#   select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
+#   melt() %>% # melt data from a wide array to long format
+#   mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+#   mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+#   group_by(variable) %>% # group by month
+#   summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+#   mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+#   select(date, total_C_g) # select final variables
 
-dim(df_zmicro_long)
-# head(df_zmicro_long)
+df_zmicro_long <- df_zmicro_raw %>%
+  gather(Date, mol_C_m2,Jan_1961:Dec_2010) %>% # Convert from wide format to long
+  mutate(C_g_m2 = mol_C_m2 * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = mol_C_m2*area_m2) %>% # g C per grid cell by multiplying by area in m^2 per grid cell
+  mutate(C_gww = C_g * 10) %>% # *10 to get grams wet weight
+  mutate(date = parse_date_time(Date, orders = "my")) %>% # Create a tidy date variable
+  group_by(date) %>% # group by month
+  summarise(total_C_gww = sum(C_gww)) # sum carbon so it is total carbon for whole model domain per month
 ```
 
 ## Mesozooplankton
@@ -190,28 +259,24 @@ dim(df_zmeso_raw)
 
 
 ```{r}
+# df_zmeso_long <- df_zmeso_raw %>%
+#   select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
+#   melt() %>% # melt data from a wide array to long format
+#   mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
+#   mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
+#   group_by(variable) %>% # group by month
+#   summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
+#   mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
+#   select(date, total_C_g) # select final variables
+
 df_zmeso_long <- df_zmeso_raw %>%
-  select(!c(lat,lon, area_m2)) %>% # remove lat, lon, area_m2
-  melt() %>% # melt data from a wide array to long format
-  mutate(C_g_m2 = value * 12.001) %>% # Convert from mol C m^2 to g C m^2
-  mutate(C_g = C_g_m2*9540434011) %>% # Calculate total g C per grid cell by multiplying by area in m^2 per grid cell
-  group_by(variable) %>% # group by month
-  summarise(total_C_g = sum(C_g)) %>%  # sum carbon so it is total carbon for whole model domain per month
-  mutate(date = seq(as.Date("1961-01-01"),as.Date("2010-12-01"),by="months")) %>% # create a tidy date variable
-  select(date, total_C_g) # select final variables
-
-dim(df_zmeso_long)
-# head(df_zmeso_long)
-```
-
-## Check model domain area
-
-```{r}
-Hawaiian_Longline_area <- df_diat_raw %>%
-  select(c(lat,lon,area_m2)) %>%  
-  mutate(total_area = sum(area_m2))
-
-head(Hawaiian_Longline_area)
+  gather(Date, mol_C_m2,Jan_1961:Dec_2010) %>% # Convert from wide format to long
+  mutate(C_g_m2 = mol_C_m2 * 12.001) %>% # Convert from mol C m^2 to g C m^2
+  mutate(C_g = mol_C_m2*area_m2) %>% # g C per grid cell by multiplying by area in m^2 per grid cell
+  mutate(C_gww = C_g * 10) %>% # *10 to get grams wet weight
+  mutate(date = parse_date_time(Date, orders = "my")) %>% # Create a tidy date variable
+  group_by(date) %>% # group by month
+  summarise(total_C_gww = sum(C_gww)) # sum carbon so it is total carbon for whole model domain per month
 ```
 
 
@@ -229,12 +294,12 @@ meso_mid <- (4/3)*pi*((0.5*0.0001*10100)^3)
 ## Convert to gww and then abundance
 
 ```{r}
-# Convert total carbon to gww and then get numerical abundance by dividing by size class mid point
+# Get numerical abundance by dividing by size class mid point
 # This step assumes that all plankton are the midpoint size
-pico_abund <- df_pico_long[,2]*10/pico_mid
-large_abund <- (df_diat_long[,2] + df_diaz_long[,2])*10/large_mid
-micro_abund <- df_zmicro_long[,2]*10/micro_mid
-meso_abund <- df_zmeso_long[,2]*10/meso_mid
+pico_abund <- df_pico_long[,2]/pico_mid
+large_abund <- (df_diat_long[,2] + df_diaz_long[,2])/large_mid
+micro_abund <- df_zmicro_long[,2]/micro_mid
+meso_abund <- df_zmeso_long[,2]/meso_mid
 
 # Combine mid-point sizes for generating the x-axis for the linear fit
 plankton_x <- log10(c(pico_mid, micro_mid, large_mid, meso_mid))
@@ -382,8 +447,8 @@ df_gfdl_tos <- read.csv("Temperature_Forcings/gfdl-mom6-cobalt2_obsclim_tos_60ar
 
 df_gfdl_tob <- read.csv("Temperature_Forcings/gfdl-mom6-cobalt2_obsclim_tob_60arcmin_hawaiian-longline_monthly_1961_2010.csv") 
 
-head(df_gfdl_tos)
-head(df_gfdl_tob)
+# head(df_gfdl_tos)
+# head(df_gfdl_tob)
 
 summary(df_gfdl_tos$lat)
 summary(df_gfdl_tos$lon)

@@ -48,7 +48,10 @@ Set up the resource:
 # Load resource spectra 
 # Note: You may need to update this path
 isimip_plankton <- read.table("GFDL_resource_spectra_60arcmin.dat")
+# isimip_plankton_original <- read.table("therMizer-FishMIP-2022-HI/GFDL_resource_spectra_S1.03I0.85.dat")
 isimip_plankton <- as(isimip_plankton, "matrix")
+# isimip_plankton_original <- as(isimip_plankton_original, "matrix")
+
 sizes <- names(params@initial_n_pp)
 n_pp_array <- array(NA, dim = c(length(time_steps), length(sizes)), dimnames = list(time = time_steps, w = sizes))
 
@@ -58,29 +61,10 @@ n_pp_array[1,] <- isimip_plankton[1,]
 for (t in seq(1,length(time_steps) - 1,1)) {
   n_pp_array[t + 1,] <- isimip_plankton[t,]
 }
+
+# head(isimip_plankton_original[1,])
+# head(isimip_plankton[1,])
 ```
-
-# Need to update initial npp for the params object to align with a sensible metric from the isimip plankton
-
-```{r}
-params_updated_initial_n_pp <- params
-
-# params@resource_params$w_pp_cutoff # Find largest size class for background resource
-# 455400
-
-# initialNResource(params_updated_initial_n_pp)[which(w_full(params_updated_initial_n_pp) < 455400)]<- 10^(n_pp_array[1,])[which(w_full(params_updated_initial_n_pp) < 455400)]/params_updated_initial_n_pp@dw_full # normalise the plankton spectrum to match the therMizer
-
-initialNResource(params_updated_initial_n_pp)[which(w_full(params_updated_initial_n_pp) < 455400)]<- 10^n_pp_array[1,][which(w_full(params_updated_initial_n_pp) < 455400)]
-
-#need to cut resource at 455400g
-initialNResource(params_updated_initial_n_pp)[which(w_full(params_updated_initial_n_pp) >=resource_params(params_updated_initial_n_pp)$w_pp_cutoff)]<-0.0 # sets all above 455400g to 0
-
-
-head(initialNResource(params))
-head(initialNResource(params_updated_initial_n_pp))
-```
-
-
 
 ## Dummy temperature example
 
@@ -162,14 +146,14 @@ for (t in seq(1,length(time_steps) - 1, 1)) {
 
 Add temperature and resource information to the parameters:
 ```{r}
-paramsT <- upgradeTherParams(params_updated_initial_n_pp, ocean_temp_array = ocean_temp_array,
+paramsT <- upgradeTherParams(params, ocean_temp_array = ocean_temp_array,
                             n_pp_array = n_pp_array, 
                             vertical_migration_array = vertical_migration_array,
                             exposure_array = HIexposure, 
                             aerobic_effect = TRUE, metabolism_effect = TRUE)
 
 # Nice test to see that things are working correctly
-plotTherPerformance(params)
+plotTherPerformance(paramsT)
 ```
 
 Project to steady-state, with and without fishing:
@@ -181,13 +165,13 @@ params_steady_noF <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7
 sim_steady_noF <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7, effort = 0, return_sim = TRUE) 
 
 # Include a validation run with F = 0.2 (the estimated F for most of the species modeled, per stock assessments)
-params_steady_validate <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7, effort = 0.2) 
-sim_steady_validate <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7, effort = 0.2, return_sim = TRUE) 
+# params_steady_validate <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7, effort = 0.2) 
+# sim_steady_validate <- projectToSteady(paramsT, t_max = 600, dt = 1/12, tol = 1e-7, effort = 0.2, return_sim = TRUE) 
 
 # Test to see how things look
 plot(sim_steady_F)
 plot(sim_steady_noF)
-plot(sim_steady_validate)
+# plot(sim_steady_validate)
 ```
 
 Run simulations:
@@ -204,8 +188,8 @@ plot(projection_steady_noF)
 Save output:
 ```{r}
 # Save projections for investigating results and formatting for ISIMIP
-save(sim_steady_validate, file = "sim_steady_validate.Rdata")
-save(projection_steady_F, file = "projection_steady_F.Rdata")
-save(projection_steady_noF, file = "projection_steady_noF.Rdata")
+# save(sim_steady_validate, file = "sim_steady_validate.Rdata")
+# save(projection_steady_F, file = "projection_steady_F.Rdata")
+# save(projection_steady_noF, file = "projection_steady_noF.Rdata")
 ```
 
